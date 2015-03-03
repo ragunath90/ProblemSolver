@@ -36,6 +36,7 @@ public class RatioSolver {
 	static StanfordCoreNLP pipeline;
 	static ArrayList<Entity> allEntities  = new ArrayList<Entity>();
 	static ArrayList<Entity> ratioEntities  = new ArrayList<Entity>();
+	static ArrayList<Equation> allEquations = new ArrayList<Equation>();
 	private static void getFinalEntities(ArrayList<Entity> candidateEntities) {
 		int len = candidateEntities.size();
 		double max = -2;
@@ -74,13 +75,13 @@ public class RatioSolver {
 			unknowns++;
 		}
 		else
-			ratioEquation = theRatio.value1 + "/" + theRatio.value2 + " = ";
+			ratioEquation = theRatio.value1 + " / " + theRatio.value2 + " = ";
 		if (ratioEntities.get(0).value == null) {
-				ratioEquation = ratioEquation + ratioEntities.get(0).name + "/";
+				ratioEquation = ratioEquation + ratioEntities.get(0).name + " / ";
 				unknowns++;
 		}
 		else
-			ratioEquation = ratioEquation + ratioEntities.get(0).value + "/";
+			ratioEquation = ratioEquation + ratioEntities.get(0).value + " / ";
 		if (ratioEntities.get(1).value == null) {
 			ratioEquation = ratioEquation + ratioEntities.get(1).name;
 			unknowns++;
@@ -88,6 +89,7 @@ public class RatioSolver {
 		else
 			ratioEquation = ratioEquation + ratioEntities.get(1).value;
 		System.out.println(ratioEquation);
+		allEquations.add(EquationSimplifier.simplify(ratioEquation));
 		String secondaryEquation = "";
 		if (unknowns >= 2) {
 			for (Entity entity : allEntities) {
@@ -103,6 +105,7 @@ public class RatioSolver {
 			else
 				secondaryEquation = secondaryEquation + ratioEntities.get(1).value;
 			System.out.println(secondaryEquation);
+			allEquations.add(EquationSimplifier.simplify(secondaryEquation));
 		}
 		
 	}
@@ -120,22 +123,24 @@ public class RatioSolver {
 	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
 	    				continue;
 	    			newEntity.name = edge.getSource().lemma();
-	    			if (newEntity.name.equals("ratio") || newEntity.name.equals("scale")) {
-	    				theRatio.value2 = edge.getTarget().originalText();
-	    				IndexedWord intermediateNode = edge.getTarget();
-	    				boolean foundFlag = false;
-	    				for (SemanticGraphEdge innerEdge : edges) {
-	    		    		if (innerEdge.getSource().equals(intermediateNode) && innerEdge.getRelation().toString().equals("number")) {
-	    		    			theRatio.value1 = innerEdge.getTarget().originalText();
-	    		    			foundFlag = true;
-	    		    			break;
-	    		    		}
+	    			IndexedWord intermediateNode = edge.getTarget();
+	    			for (SemanticGraphEdge innerEdge : edges) {
+	    				if (innerEdge.getSource().equals(intermediateNode) && innerEdge.getRelation().toString().contains("mod")) {
+	    					newEntity.name = newEntity.name+"_"+innerEdge.getTarget().originalText();
+	    					break;
 	    				}
-	    		    	if (!foundFlag) {
-	    		    		theRatio.value1 = "1";
-	    		    	}
 	    			}
-	    			else {
+	    			boolean existingFlag = false;
+	    			for (Entity entity : allEntities) {
+	    				if (entity.name.equals(newEntity.name)) {
+	    					existingFlag=true;
+	    					entity.value = edge.getTarget().originalText();
+	    					System.out.println(entity.name+"|"+entity.value);
+	    					allEntities.add(allEntities.indexOf(entity), entity);
+	    					break;
+	    				}
+	    			}
+	    			if (!existingFlag) {
 	    				newEntity.value = edge.getTarget().originalText();
 	    				System.out.println(newEntity.name+"|"+newEntity.value);
 	    				allEntities.add(newEntity);
@@ -145,10 +150,13 @@ public class RatioSolver {
 	    	String simpleSentence = sentence.toString();
 	    	if (simpleSentence.contains("ratio") && theRatio.value1 == null) {
 	    		String[] words = simpleSentence.split("[\\s\\.]");
+	    		boolean ratioWordFlag = false;
 	    		for (String word : words) {
-	    			if (word.matches("\\d+") && theRatio.value1 == null)
+	    			if (word.equals("ratio")) 
+	    				ratioWordFlag = true;
+	    			if (ratioWordFlag && word.matches("\\d+") && theRatio.value1 == null)
 	    				theRatio.value1 = word;
-	    			else if (word.matches("\\d+"))
+	    			else if (ratioWordFlag && word.matches("\\d+") && theRatio.value2 == null)
 	    				theRatio.value2 = word;
 	    		}
 	    	}
@@ -182,6 +190,26 @@ public class RatioSolver {
 	public static String solve (String input, StanfordCoreNLP pipeline) {
 		process(input,pipeline);
 		developEquations();
+		System.out.println("------------------------------------------------------------");
+		if (allEquations.size() == 1) {
+			System.out.println("Ratio = "+theRatio.value1 + ":" +theRatio.value2);
+			for (int i=0; i<ratioEntities.size(); i++) {
+				System.out.print(ratioEntities.get(i).name +" = ");
+				if (ratioEntities.get(i).value != null)
+					System.out.println(ratioEntities.get(i).value);
+				else
+					System.out.println(EquationSimplifier.answer);	
+			}
+		}
+		else {
+			ArrayList<Double> answers = EquationSolver.solve(allEquations);
+			System.out.println("Ratio = "+theRatio.value1 + ":" +theRatio.value2);
+			for (int i=0; i<ratioEntities.size(); i++) {
+				System.out.print(ratioEntities.get(i).name +" = ");
+				System.out.println(Math.round(answers.get(i)));
+			}
+		}
+		EquationSimplifier.clearMap();
 		return "";
 	}
 	
@@ -189,7 +217,7 @@ public class RatioSolver {
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse,dcoref");
 	    pipeline = new StanfordCoreNLP(props);
-	    String input = "Two numbers are in the ratio 8 to 3. If the sum of numbers is 143 , find the numbers.";
+	    String input =  "The ratio of boys to girls is 9 to 4. If there are 26 students, how many girls are there?";
 	    solve(input,pipeline);
 	}
 }
