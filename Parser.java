@@ -1,8 +1,8 @@
-
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
+import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -10,6 +10,8 @@ import edu.stanford.nlp.dcoref.CorefChain;
 import edu.stanford.nlp.dcoref.CorefChain.CorefMention;
 import edu.stanford.nlp.dcoref.CorefCoreAnnotations.CorefChainAnnotation;
 import edu.stanford.nlp.ling.CoreLabel;
+//import edu.stanford.nlp.ling.CoreAnnotations.LemmaAnnotation;
+//import edu.stanford.nlp.ling.CoreAnnotations.NamedEntityTagAnnotation;
 import edu.stanford.nlp.ling.CoreAnnotations.PartOfSpeechAnnotation;
 import edu.stanford.nlp.ling.CoreAnnotations.SentencesAnnotation;
 import edu.stanford.nlp.ling.CoreAnnotations.TextAnnotation;
@@ -25,7 +27,9 @@ public class Parser {
 
 	public static String parse(String input, StanfordCoreNLP pipeline) {
 		String ans = "";
+		Properties props = new Properties();
 		HashMap<String,String> coref = new HashMap<String,String>();
+	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse,dcoref");
 	    String text = input; 
 	    Annotation document = new Annotation(text);
 	    pipeline.annotate(document);
@@ -64,14 +68,23 @@ public class Parser {
 	    	ArrayList<String> words = new ArrayList<String>();
 	    	for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
 	    		String word = token.get(TextAnnotation.class);
+	    	//	String lemma;
+	   			//lemma = token.get(LemmaAnnotation.class);
+	    		//String pos = token.get(PartOfSpeechAnnotation.class);
+	    		//System.out.println(word+"|"+pos+"|"+lemma+"|"+token.get(NamedEntityTagAnnotation.class));
 	    		words.add(word);
+	    //		if (pos.contains("W"))
+	    	//		questionSentence = counter;
 	    	}
 	    	Tree tree = sentence.get(TreeAnnotation.class);
 	    	String parseExpr = tree.toString();
 	    	String[] constituents = parseExpr.split(" ");
+	    	//boolean quesFlag = false;
 	    	for (int i=0; i<constituents.length; i++) {
 	    		String initialPart = "", finalPart = "";
-	    		if (!constituents[i].contains("VBG") && constituents[i].contains("VB")) {
+	    		//if (constituents[i].contains("(W"))
+	    			//quesFlag = true;
+	    		if (constituents[i].contains("VB")) {
 	    			for (int j=i-1; j>=0; j--) {
 	    				if (constituents[j].contains("(NP") || constituents[j].contains("(W")) 
 	    					break;
@@ -118,12 +131,24 @@ public class Parser {
 	    				}
 	    			}
 	    			i = j;
+	    			/*if (quesFlag) {
+	    				initialPart = "? " + initialPart;
+	    				quesFlag = false;
+	    			}*/
 	    			initialPart = (initialPart.charAt(0) + "").toUpperCase() + initialPart.substring(1);
 	    			ans = (ans + initialPart + finalPart).trim() + ".\n";
 	    		}
 	    	}
 	    	System.out.println(tree);
-	    }	    	    
+	    	
+	    }
+	    
+	    	    
 	    return ans;
+	}
+	public static void main(String[] args) {
+		//System.out.println("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket? ");
+		//System.out.println(parse("Ruth had 3 apples. She put 2 apples into a basket. How many apples are there in the basket now, if in the beginning there were 4 apples in the basket?"));	
+		
 	}
 }

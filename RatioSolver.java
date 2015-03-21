@@ -37,6 +37,7 @@ public class RatioSolver {
 	static ArrayList<Entity> allEntities  = new ArrayList<Entity>();
 	static ArrayList<Entity> ratioEntities  = new ArrayList<Entity>();
 	static ArrayList<Equation> allEquations = new ArrayList<Equation>();
+	static String quesEquation = "";
 	private static void getFinalEntities(ArrayList<Entity> candidateEntities) {
 		int len = candidateEntities.size();
 		double max = -2;
@@ -113,7 +114,20 @@ public class RatioSolver {
 		Annotation document = new Annotation(input);
 	    pipeline.annotate(document);
 	    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
+	    boolean isQuestion = false;
 	    for(CoreMap sentence: sentences) {
+	    	for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
+		    	String word = token.get(TextAnnotation.class);
+		    	String lemma = token.get(LemmaAnnotation.class);
+		    	String pos = token.get(PartOfSpeechAnnotation.class);
+		    	if (pos.contains("W")) { 
+		    		isQuestion = true;
+		    		continue;
+		    	}
+		    	if (isQuestion && pos.contains("NN")) {
+		    		System.out.println(word+"|"+lemma);
+		    	}
+			}
 	    	SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
 	    	System.out.println(dependencies);
 	    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
@@ -125,7 +139,7 @@ public class RatioSolver {
 	    			newEntity.name = edge.getSource().lemma();
 	    			IndexedWord intermediateNode = edge.getTarget();
 	    			for (SemanticGraphEdge innerEdge : edges) {
-	    				if (innerEdge.getSource().equals(intermediateNode) && innerEdge.getRelation().toString().contains("mod")) {
+	    				if (innerEdge.getSource().equals(intermediateNode) && (innerEdge.getRelation().toString().contains("mod") || innerEdge.getRelation().toString().contains("nn"))) {
 	    					newEntity.name = newEntity.name+"_"+innerEdge.getTarget().originalText();
 	    					break;
 	    				}
@@ -217,7 +231,8 @@ public class RatioSolver {
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse,dcoref");
 	    pipeline = new StanfordCoreNLP(props);
-	    String input =  "The ratio of boys to girls is 9 to 4. If there are 26 students, how many girls are there?";
+	    String input =  "There are 5 boy scouts";
+	    System.out.println(Parser.parse(input, pipeline));
 	    solve(input,pipeline);
 	}
 }
