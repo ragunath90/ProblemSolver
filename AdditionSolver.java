@@ -23,40 +23,78 @@ import edu.stanford.nlp.util.CoreMap;
 
 class Timestamp {
 	String time;
-	HashMap<String,State> situation;
+	HashMap<String, State> situation;
 }
+
 class State {
 	String owner;
-	HashMap<String,String> ownedEntities;
+	HashMap<String, String> ownedEntities;
 }
 
 public class AdditionSolver {
-	static StanfordCoreNLP pipeline;
-	static HashMap<String,String> variables = new HashMap<String,String>();
-	static ArrayList<Timestamp> story = new ArrayList<Timestamp>();
+	
+	private static final String CHANGE_OUT = "changeOut";
+	private static final String X_VALUE = "x";
+
+	private static final String UNKNOWN = "unknown";
+	private static final String CHANGE = "change";
+	private static final String OWNER_1 = "[owner1]";
+	private static final String OWNER_2 = "[owner2]";
+	private static final String ENTITY = "[entity]";
+	private static final String TIMESTAMP_PREFIX = "t";
+
+	private static final int NO_OWNERS_SUPPORTED = 2;
+
+	// give this a better meaningful name
+	private static final String SPLIT_PATTERN = "x\\d+";
+	
+	// NLP Parser constants
+	private static final String NLP_WORD = "W";
+	private static final String NLP_VERB = "VB";
+	private static final String NLP_VBD = "VBD";
+	private static final String NLP_JJ = "JJ";
+	private static final String NLP_NOUN = "VBN";
+
+	private static final String PRESENT = "present";
+	private static final String PAST = "past";
+
+	// having everything as static is very very bad. 
+	// totally destroys the understandability of code
+	// functions should pass and get responses. 
+	// this could be HashMap or a class when you want to return multiple values from a function
 	static int timeStep = 0;
 	static int varCount = 1;
 	static int unknownCounter = 0;
+	static int questionTime = -1;
+
+	static String questionEntity = "";
+	static String questionOwner = "";
+
+	static ArrayList<Timestamp> story = new ArrayList<Timestamp>();
+	static HashMap<String,String> variables = new HashMap<String,String>();
 	static HashMap<String,String> keywordMap = new HashMap<String,String>();
 	static HashMap<String,String> procedureMap = new HashMap<String,String>();
 	static LinkedHashSet<String> owners = new LinkedHashSet<String>();
 	static LinkedHashSet<String> entities = new LinkedHashSet<String>();
-	static String questionEntity = "";
-	static String questionOwner = "";
-	static int questionTime = -1;
+	
+	static StanfordCoreNLP pipeline;
+
 	private static void loadKeywordLookup() {
-		keywordMap.put("put","changeOut");
+		keywordMap.put("put", CHANGE_OUT);
 	}
+
 	private static void loadProcedureLookup() {
-		procedureMap.put("changeOut","[owner1]-[entity]. [owner2]+[entity]");
-		procedureMap.put("comparePlus","[owner1]+[owner2]");
+		// change every re usable string to constants. 
+		procedureMap.put(CHANGE_OUT, "[owner1]-[entity]. [owner2]+[entity]");
+		procedureMap.put("comparePlus", "[owner1]+[owner2]");
 	}
+
 	private static void updateTimestamp (String owner, Entity newEntity, String tense) {
 		owners.add(owner);
 		entities.add(newEntity.name);
 		HashMap<String,State> currentSituation = new HashMap<String,State>();
 		int changeTime = timeStep;
-		if (tense.equals("past"))
+		if (tense.equals(PAST))
 			changeTime = 0;
 		if (story.size() != timeStep) {
 			currentSituation = story.get(changeTime).situation;
@@ -64,15 +102,14 @@ public class AdditionSolver {
 		State currentState;
 		if (currentSituation.containsKey(owner)) { 
 			currentState = currentSituation.get(owner);
-		}
-		else {
+		} else {
 			currentState = new State();
 			currentState.owner = owner;
 			currentState.ownedEntities = new HashMap<String,String>();
 		}
 		if (currentState.ownedEntities.containsKey(newEntity.name)) {
 			String existingValue = currentState.ownedEntities.get(newEntity.name);
-			if (existingValue.contains("x")) {
+			if (existingValue.contains(X_VALUE)) {
 				variables.put(existingValue, newEntity.value);
 				updateValues();
 			}
@@ -80,7 +117,7 @@ public class AdditionSolver {
 		currentState.ownedEntities.put(newEntity.name, newEntity.value);
 		currentSituation.put(owner, currentState);
 		Timestamp updatedTimestamp = new Timestamp();
-		updatedTimestamp.time = "t"+changeTime;
+		updatedTimestamp.time = TIMESTAMP_PREFIX + changeTime;
 		updatedTimestamp.situation = currentSituation;
 		if (story.size() == changeTime)
 			story.add(changeTime,updatedTimestamp);
@@ -90,6 +127,7 @@ public class AdditionSolver {
 		}
 		displayStory();
 	}
+
 	private static void updateValues() {
 		ArrayList<Timestamp> newStory = new ArrayList<Timestamp>();
 		for (Timestamp t : story) {
@@ -101,15 +139,16 @@ public class AdditionSolver {
 			     Iterator<Map.Entry<String,String>> it1 = s.ownedEntities.entrySet().iterator();
 				 while (it1.hasNext()) {
 					Map.Entry<String,String> newPairs = it1.next();
-					if (newPairs.getValue().contains("x")) {
-						Pattern varPattern = Pattern.compile("x\\d+");
+					if (newPairs.getValue().contains(X_VALUE)) {
+						Pattern varPattern = Pattern.compile(SPLIT_PATTERN);
 						Matcher varMatcher = varPattern.matcher(newPairs.getValue().toString());
 						if (varMatcher.find()) {
 							entityName = newPairs.getKey();
-							newValue = newPairs.getValue().replaceFirst("x\\d+", variables.get(varMatcher.group()));	
+							newValue = newPairs.getValue().replaceFirst(SPLIT_PATTERN, variables.get(varMatcher.group()));	
 						}
 					}
 				 }
+				 // use StringUtils.isEmpty. Not sure of the syntax.
 				 if (!newValue.equals(""))
 					 s.ownedEntities.put(entityName, newValue);
 				 t.situation.put(pairs.getKey(), s);		 
@@ -118,78 +157,92 @@ public class AdditionSolver {
 		}	
 		story = newStory;
 	}
+
 	private static void displayStory() {
 		System.out.println("----------------------------------------------------");
 		for (Timestamp t : story) {
 			System.out.println(t.time);
-			Iterator<Map.Entry<String,State>> it = t.situation.entrySet().iterator();
+			Iterator<Map.Entry<String, State>> it = t.situation.entrySet().iterator();
 			while (it.hasNext()) {
-			     Map.Entry<String,State> pairs = it.next();
-			     System.out.print(pairs.getKey()+" ");
+			     Map.Entry<String, State> pairs = it.next();
+			     System.out.print(pairs.getKey() + " ");
 			     State s = pairs.getValue();
-			     Iterator<Map.Entry<String,String>> it1 = s.ownedEntities.entrySet().iterator();
+			     Iterator<Map.Entry<String, String>> it1 = s.ownedEntities.entrySet().iterator();
 				 while (it1.hasNext()) {
-					Map.Entry<String,String> newPairs = it1.next();
-					System.out.print(newPairs.getKey()+" "+newPairs.getValue());
+					Map.Entry<String, String> newPairs = it1.next();
+					System.out.print(newPairs.getKey() + " " + newPairs.getValue());
 				 }
 				 System.out.println("");
 			}	
 		}
 	}
-	
-	private static void reflectChanges(String owner1, String owner2, Entity newEntity, String keyword, String procedure, String tense) {
+
+	private static void reflectChanges(String owner1, String owner2, Entity newEntity,
+									   String keyword, String procedure, String tense) {
+		// Use StringUtils.isEmpty. Do this everywhere you check for null/empty strings
 		if (owner1.equals("")) {
-			owner1 = "unknown" + unknownCounter + 1;
+			owner1 = UNKNOWN + unknownCounter + 1;
 			unknownCounter++;
 		}
 		if (owner2.equals("")) {
-			owner2 = "unknown" + unknownCounter + 1;
+			owner2 = UNKNOWN + unknownCounter + 1;
 			unknownCounter++;
 		}
-		if (keyword.equals("") && newEntity.name!=null) {
+		// Write comment here as to why you are exiting with this
+		// comments should be written when the code doesn't look obvious
+		if (keyword.equals("") && newEntity.name != null) {
 			if (entities.contains(owner1))
-				updateTimestamp(owner2,newEntity,tense);
+				updateTimestamp(owner2, newEntity, tense);
 			else
-				updateTimestamp(owner1,newEntity,tense);
+				updateTimestamp(owner1, newEntity, tense);
+			// when you use return, else is not necessary. 
+			// This is called early exit
 			return;
+		} 
+		String oldValue1 = "", oldValue2 = "";
+		try {
+			oldValue1 = story.get(timeStep).situation.get(owner1).ownedEntities.get(newEntity.name);
+		} catch (NullPointerException ex) {
+			addOwner(owner1, newEntity.name);
+			oldValue1 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
 		}
-		else {
-			String oldValue1="", oldValue2="";
-			try {
-				oldValue1 = story.get(timeStep).situation.get(owner1).ownedEntities.get(newEntity.name);
-			} catch (NullPointerException ex) {
-				addOwner(owner1,newEntity.name);
-				oldValue1 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
+		try {
+			oldValue2 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
+		} catch (NullPointerException ex) {
+			addOwner(owner2, newEntity.name);
+			oldValue2 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
+		}
+		if (procedure.contains(CHANGE)) {
+			timeStep++;
+			tense = "";
+		}
+		String[] steps = procedureMap.get(procedure).split("\\.");
+		System.out.println(procedure + "|" + procedureMap.get(procedure) + "|" + steps.length);
+		// can't NO_OWNERS_SUPPORTED by replaced with steps.length? 
+		// what if steps only has one value. below code will through IndexOutOfBoundsExcetion.
+		// if you expect the length to be 2, you should assert it
+		// like assert(steps.length == NO_OWNERS_SUPPORTED)
+		for (int i = 0; i < NO_OWNERS_SUPPORTED; i++) {
+			Entity modifiedEntity = new Entity();
+			modifiedEntity.name = newEntity.name;
+			String step = steps[i];
+			step = step.replace(OWNER_1, oldValue1);
+			step = step.replace(OWNER_2, oldValue2);
+			step = step.replace(ENTITY, newEntity.value);
+			modifiedEntity.value = step;
+			String owner;
+			if (i == 0) {
+				owner = owner1;
+			} else {
+				owner = owner2;
 			}
-			try {
-				oldValue2 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
-			} catch (NullPointerException ex) {
-				addOwner(owner2,newEntity.name);
-				oldValue2 = story.get(timeStep).situation.get(owner2).ownedEntities.get(newEntity.name);
-			}
-			if (procedure.contains("change")) {
-				timeStep++;
-				tense = "";
-			}
-			String[] steps = procedureMap.get(procedure).split("\\.");
-			System.out.println(procedure+"|"+procedureMap.get(procedure)+"|"+steps.length);
-			for (int i=0; i<2; i++) {
-				Entity modifiedEntity = new Entity();
-				modifiedEntity.name = newEntity.name;
-				steps[i] = steps[i].replace("[owner1]", oldValue1);
-				steps[i] = steps[i].replace("[owner2]", oldValue2);
-				steps[i] = steps[i].replace("[entity]", newEntity.value);
-				modifiedEntity.value = steps[i];
-				if (i == 0)
-					updateTimestamp(owner1,modifiedEntity,tense);
-				else
-					updateTimestamp(owner2,modifiedEntity,tense);
-			}
+			updateTimestamp(owner, modifiedEntity, tense);
 		}
 	}
+
 	private static void addOwner(String owner, String name) {
-		String varName = "x"+varCount;
-		for (int i=0; i<=timeStep; i++) {
+		String varName = X_VALUE + varCount;
+		for (int i = 0; i <= timeStep; i++) {
 			HashMap<String,State> iSituation = story.get(i).situation;
 			State newState = new State();
 			newState.owner = owner;
@@ -199,10 +252,10 @@ public class AdditionSolver {
 			story.get(i).situation = iSituation;
 		}
 		variables.put(varName, null);
-		varCount++;
-		
+		varCount++;	
 	}
-	private static void process (String input, StanfordCoreNLP pipeline) {
+
+	private static void process(String input, StanfordCoreNLP pipeline) {
 		Annotation document = new Annotation(input);
 	    pipeline.annotate(document);
 	    List<CoreMap> sentences = document.get(SentencesAnnotation.class);
@@ -210,20 +263,24 @@ public class AdditionSolver {
 	    	String tense = "";
     	    String keyword = "", procedure = "";
     	    boolean isQuestion = false;
+    	    // too many nexted for loops. 
+    	    // break into functions if possible and return necessary values.
+    	    // in this case, you could probably send a HashMap back with keys
+    	    // 1. isQuesiton, 2. procedure, 3. tense
+    	    // code should be as descriptive as possible
 	    	for (CoreLabel token: sentence.get(TokensAnnotation.class)) {
-		    	//String word = token.get(TextAnnotation.class);
+		    	// String word = token.get(TextAnnotation.class);
 		    	String lemma = token.get(LemmaAnnotation.class);
 		    	String pos = token.get(PartOfSpeechAnnotation.class);
-		    	if (pos.contains("W")) {
-		    		processQuestion (sentence);
+		    	if (pos.contains(NLP_WORD)) {
 		    		isQuestion = true;
 		    		break;
 		    	}
-		    	if (pos.contains("VB") || pos.contains("JJ")) {
-		    		if (pos.contains("VBD") || pos.contains("VBN"))
-			    		tense = "past";
+		    	if (pos.contains(NLP_VERB) || pos.contains(NLP_JJ)) {
+		    		if (pos.contains(NLP_VBD) || pos.contains(NLP_NOUN))
+			    		tense = PAST;
 		    		else
-		    			tense = "present";
+		    			tense = PRESENT;
 		    		if (keywordMap.containsKey(lemma)) {
 		    			keyword = lemma;
 		    			procedure = keywordMap.get(keyword);
@@ -231,15 +288,19 @@ public class AdditionSolver {
 		    			
 		    	}
 			}
-	    	if (isQuestion)
+	    	if (isQuestion) {
+	    		processQuestion(sentence);
 	    		continue;
+	    	}
 	    	SemanticGraph dependencies = sentence.get(CollapsedCCProcessedDependenciesAnnotation.class);
 	    	System.out.println(dependencies);
 	    	String owner1 = "", owner2 = "";
 	    	Entity newEntity = new Entity();
 	    	ArrayList<SemanticGraphEdge> edges = (ArrayList<SemanticGraphEdge>) dependencies.edgeListSorted();
+	    	// break the below into a function
 	    	for (SemanticGraphEdge edge : edges) {
-	    		//3 apples
+	    		// change all string literals to constants with meaningful names
+	    		// 3 apples
 	    		if (edge.getRelation().toString().equals("num") || edge.getRelation().toString().equals("advcl")) {
 	    			if (!edge.getSource().lemma().matches("[a-zA-Z]+"))
 	    				continue;
@@ -253,7 +314,7 @@ public class AdditionSolver {
 	    				}
 	    			}*/
 	    			newEntity.value = edge.getTarget().originalText();
-	    			System.out.println("entity"+newEntity.name+"|"+newEntity.value);
+	    			System.out.println(ENTITY + newEntity.name + "|" + newEntity.value);
 	    		}
 	    		if (edge.getTarget().toString().contains("NN")) {
 	    			if (edge.getRelation().toString().equals("nsubj"))
@@ -262,8 +323,9 @@ public class AdditionSolver {
 	    				owner2 = edge.getTarget().lemma();
 	    		}
 	    	}
-	    	System.out.println(owner1+"|"+owner2+"|"+newEntity.name+"|"+newEntity.value+"|"+keyword+"|"+procedure+"|"+tense);
-    		reflectChanges(owner1,owner2,newEntity,keyword,procedure,tense);
+	    	System.out.println(owner1 + "|" + owner2 + "|" + newEntity.name + 
+	    		"|" + newEntity.value + "|" + keyword + "|" + procedure + "|" + tense);
+    		reflectChanges(owner1, owner2, newEntity, keyword, procedure, tense);
 	    }
 	}
 	
@@ -272,12 +334,12 @@ public class AdditionSolver {
 	    	String word = token.get(TextAnnotation.class);
 	    	String lemma = token.get(LemmaAnnotation.class);
 	    	String pos = token.get(PartOfSpeechAnnotation.class);
-	    	if (pos.contains("VB")) {
-	    		if (pos.contains("VBD") || pos.contains("VBN")) {
+	    	if (pos.contains(NLP_VERB)) {
+	    		if (pos.contains(NLP_VBD) || pos.contains(NLP_NOUN)) {
 		    		questionTime = 0;
-	    		}
-	    		else
+	    		} else {
 	    			questionTime = timeStep;		
+	    		}
 	    	}
 	    	if (entities.contains(word)) 
 	    		questionEntity = word;
@@ -290,17 +352,18 @@ public class AdditionSolver {
 		}
 		
 	}
-	public static String solve (String input, StanfordCoreNLP pipeline) {
-		process(input,pipeline);
+	public static String solve(String input, StanfordCoreNLP pipeline) {
+		process(input, pipeline);
 		displayStory();
 		ansQuestion();
 		return "";
 	}
+
 	private static void ansQuestion() {
 		String ans = story.get(questionTime).situation.get(questionOwner).ownedEntities.get(questionEntity);
 		System.out.println(questionOwner + " has " + ExpressionCalculator.solve(ans) + " " + questionEntity );
-		
 	}
+
 	public static void main(String[] args) {
 		Properties props = new Properties();
 	    props.put("annotators", "tokenize, ssplit, pos, lemma, ner,parse,dcoref");
