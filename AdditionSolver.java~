@@ -31,15 +31,9 @@ class State {
 	HashMap<String, String> ownedEntities;
 }
 
-class Entity {
-	String name;
-	String value;
-}
-
 public class AdditionSolver {
 	
 	private static final String CHANGE_OUT = "changeOut";
-	private static final String COMPARE_PLUS = "comparePlus";
 	private static final String X_VALUE = "x";
 
 	private static final String UNKNOWN = "unknown";
@@ -52,7 +46,7 @@ public class AdditionSolver {
 	private static final int NO_OWNERS_SUPPORTED = 2;
 
 	// give this a better meaningful name
-	private static final String VAR_PATTERN = "x\\d+";
+	private static final String SPLIT_PATTERN = "x\\d+";
 	
 	// NLP Parser constants
 	private static final String NLP_WORD = "W";
@@ -92,7 +86,7 @@ public class AdditionSolver {
 	private static void loadProcedureLookup() {
 		// change every re usable string to constants. 
 		procedureMap.put(CHANGE_OUT, "[owner1]-[entity]. [owner2]+[entity]");
-		procedureMap.put(COMPARE_PLUS, "[owner1]+[owner2]");
+		procedureMap.put("comparePlus", "[owner1]+[owner2]");
 	}
 
 	private static void updateTimestamp (String owner, Entity newEntity, String tense) {
@@ -146,15 +140,16 @@ public class AdditionSolver {
 				 while (it1.hasNext()) {
 					Map.Entry<String,String> newPairs = it1.next();
 					if (newPairs.getValue().contains(X_VALUE)) {
-						Pattern varPattern = Pattern.compile(VAR_PATTERN);
+						Pattern varPattern = Pattern.compile(SPLIT_PATTERN);
 						Matcher varMatcher = varPattern.matcher(newPairs.getValue().toString());
 						if (varMatcher.find()) {
 							entityName = newPairs.getKey();
-							newValue = newPairs.getValue().replaceFirst(VAR_PATTERN, variables.get(varMatcher.group()));	
+							newValue = newPairs.getValue().replaceFirst(SPLIT_PATTERN, variables.get(varMatcher.group()));	
 						}
 					}
 				 }
-				 if (!newValue.isEmpty())
+				 // use StringUtils.isEmpty. Not sure of the syntax.
+				 if (!newValue.equals(""))
 					 s.ownedEntities.put(entityName, newValue);
 				 t.situation.put(pairs.getKey(), s);		 
 			}
@@ -193,7 +188,8 @@ public class AdditionSolver {
 			owner2 = UNKNOWN + unknownCounter + 1;
 			unknownCounter++;
 		}
-		// There is no keyword here, an entity has been assigned a value
+		// Write comment here as to why you are exiting with this
+		// comments should be written when the code doesn't look obvious
 		if (keyword.equals("") && newEntity.name != null) {
 			if (entities.contains(owner1))
 				updateTimestamp(owner2, newEntity, tense);
@@ -226,7 +222,7 @@ public class AdditionSolver {
 		// what if steps only has one value. below code will through IndexOutOfBoundsExcetion.
 		// if you expect the length to be 2, you should assert it
 		// like assert(steps.length == NO_OWNERS_SUPPORTED)
-		for (int i = 0; i < steps.length; i++) {
+		for (int i = 0; i < NO_OWNERS_SUPPORTED; i++) {
 			Entity modifiedEntity = new Entity();
 			modifiedEntity.name = newEntity.name;
 			String step = steps[i];
@@ -235,7 +231,7 @@ public class AdditionSolver {
 			step = step.replace(ENTITY, newEntity.value);
 			modifiedEntity.value = step;
 			String owner;
-			if (step.contains(OWNER_1)) {
+			if (i == 0) {
 				owner = owner1;
 			} else {
 				owner = owner2;
@@ -379,4 +375,3 @@ public class AdditionSolver {
 	    solve(Parser.parse(input, pipeline),pipeline);
 	}
 }
-
